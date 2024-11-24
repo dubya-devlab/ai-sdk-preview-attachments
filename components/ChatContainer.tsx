@@ -1,70 +1,121 @@
-"use client";
+'use client';
 
-import { useEffect, useRef, useState } from "react";
-import { Message } from "./types/chat";
-import { ChatMessage } from "./ChatMessage";
-import { LoadingMessage } from "./LoadingMessage";
-import { ChatInput } from "./ChatInput";
-import { DragOverlay } from "./DragOverlay";
+import { useEffect, useRef, useState } from 'react';
+import { ChatMessage } from './ChatMessage';
+import { LoadingMessage } from './LoadingMessage';
+import { ChatInput } from './ChatInput';
+
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+}
 
 export function ChatContainer() {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSubmit = async (message: string, attachments?: File[]) => {
-    setIsLoading(true);
-    setMessages((prev) => [...prev, { role: "user", content: message }]);
+  useEffect(() => {
+    const handleChatMessage = async (event: CustomEvent) => {
+      const { message } = event.detail;
+      await processMessage(message);
+    };
 
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ message, attachments }),
-      });
+    window.addEventListener('n8n-chat-message' as any, handleChatMessage as any);
+    return () => {
+      window.removeEventListener('n8n-chat-message' as any, handleChatMessage as any);
+    };
+  }, [messages]);
 
-      if (!response.ok) {
-        throw new Error("Failed to send message");
-      }
-
-      const data = await response.json();
-      setMessages((prev) => [...prev, { role: "assistant", content: data.message }]);
-    } catch (error) {
-      console.error("Error sending message:", error);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Sorry, there was an error processing your message." },
-      ]);
-    } finally {
-      setIsLoading(false);
+  const stopStreaming = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsStreaming(false);
     }
   };
 
-  return (
-    <div className="flex flex-col h-[600px] max-h-[600px] bg-gray-50 rounded-lg shadow-md">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((message, index) => (
-          <ChatMessage key={index} message={message} />
-        ))}
-        {isLoading && <LoadingMessage />}
-        <div ref={messagesEndRef} />
-      </div>
+  const processMessage = async (message: string) => {
+    setIsStreaming(true);
+    setMessages(prev => [...prev, { role: 'user', content: message }]);
 
-      <div className="border-t p-4 relative">
-        {isDragging && <DragOverlay />}
-        <ChatInput
+    try {
+      abortControllerRef.current = new AbortController();
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [...messages, { role: 'user', content: message }],
+        }),
+        signal: abortControllerRef.current.signal,
+      });
+
+      if (!response.ok) throw new Error('Failed to send message');
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No reader available');
+
+      let assistantMessage = '';
+      setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const text = new TextDecoder().decode(value);
+        assistantMessage += text;
+
+        setMessages(prev => {
+          const newMessages = [...prev];
+          const lastMessage = newMessages[newMessages.length - 1];
+          if (lastMessage?.role === 'assistant') {
+            lastMessage.content = assistantMessage;
+          }
+          return newMessages;
+        });
+      }
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Stream aborted');
+      } else {
+        console.error('Error processing message:', error);
+        setMessages(prev => [
+          ...prev,
+          { role: 'assistant', content: 'Sorry, there was an error processing your message.' },
+        ]);
+      }
+    } finally {
+      setIsStreaming(false);
+      abortControllerRef.current = null;
+    }
+  };
+
+  const handleSubmit = async (message: string) => {
+    await processMessage(message);
+  };
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0">
+      <div className="max-w-6xl mx-auto">
+        {messages.length > 0 && (
+          <div className="max-h-[400px] overflow-y-auto bg-zinc-900/50 rounded-t-lg p-4 space-y-4">
+            {messages.map((message, index) => (
+              <ChatMessage key={index} message={message} />
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+        )}
+        <ChatInput 
           onSubmit={handleSubmit}
-          isLoading={isLoading}
-          onDragEnter={() => setIsDragging(true)}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={() => setIsDragging(false)}
+          isStreaming={isStreaming}
+          onStop={stopStreaming}
         />
       </div>
     </div>

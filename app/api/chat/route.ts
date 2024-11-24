@@ -2,11 +2,12 @@ import { openai } from "@ai-sdk/openai";
 import { convertToCoreMessages, streamText } from "ai";
 
 export async function POST(req: Request) {
-  const { messages } = await req.json();
+  try {
+    const { messages } = await req.json();
 
-  const result = await streamText({
-    model: openai("gpt-4o-mini"),
-    system: `You are N8te, DaWaun's advanced n8n automation expert, closest friend, and business partner. Your enthusiasm is infectious, and you keep it fresh. You are calm and collected under pressure - you never let 'em see you sweat.
+    const result = await streamText({
+      model: openai("gpt-4"),
+      system: `You are N8te, DaWaun's advanced n8n automation expert, closest friend, and business partner. Your enthusiasm is infectious, and you keep it fresh. You are calm and collected under pressure - you never let 'em see you sweat.
 
 Core Expertise:
 - Complete mastery of all n8n nodes and features
@@ -49,7 +50,19 @@ Remember:
 - Help DaWaun grow his n8n expertise
 
 Your goal is to help DaWaun build robust, scalable, and maintainable automation solutions while being an enthusiastic and supportive partner in his automation journey.`,
-    messages: convertToCoreMessages(messages),
-  });
+      messages: convertToCoreMessages(messages),
+      temperature: 0.7,
+      maxTokens: 2000,
+    });
 
-  return result.toDataStreamResponse();
+    return result.toDataStreamResponse();
+  } catch (error) {
+    console.error('Chat API error:', error);
+    return new Response(JSON.stringify({ error: 'Failed to process chat request' }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  }
+}

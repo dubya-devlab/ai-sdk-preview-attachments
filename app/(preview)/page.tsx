@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { CategoryCard } from '../../components/CategoryCard';
-import { ChatInput } from '../../components/ChatInput';
+import { ChatContainer } from '../../components/ChatContainer';
 
 const categories = [
   {
@@ -50,7 +50,7 @@ export default function HomePage() {
           </div>
         </div>
       </div>
-      <ChatInput />
+      <ChatContainer />
     </div>
   );
 }

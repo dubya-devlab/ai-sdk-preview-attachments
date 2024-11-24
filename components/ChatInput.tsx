@@ -3,10 +3,12 @@
 import React, { useState } from 'react';
 
 interface ChatInputProps {
-  onSubmit?: (message: string) => Promise<void>;
+  onSubmit: (message: string) => Promise<void>;
+  isStreaming?: boolean;
+  onStop?: () => void;
 }
 
-export function ChatInput({ onSubmit }: ChatInputProps) {
+export function ChatInput({ onSubmit, isStreaming, onStop }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -15,26 +17,12 @@ export function ChatInput({ onSubmit }: ChatInputProps) {
     
     setIsLoading(true);
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: [{ role: 'user', content: message }],
-        }),
-      });
-
-      if (!response.ok) throw new Error('Failed to send message');
-
-      if (onSubmit) {
-        await onSubmit(message);
-      }
+      await onSubmit(message);
+      setMessage('');
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('Error submitting message:', error);
     } finally {
       setIsLoading(false);
-      setMessage('');
     }
   };
 
@@ -71,27 +59,39 @@ export function ChatInput({ onSubmit }: ChatInputProps) {
             onKeyPress={handleKeyPress}
             placeholder="Share your n8n workflow or describe what you want to achieve..."
             className="w-full bg-zinc-900/50 border border-zinc-800 rounded-lg py-4 pl-12 pr-12 text-white placeholder-zinc-500 focus:outline-none focus:border-green-500"
+            disabled={isStreaming}
           />
           <button
-            onClick={handleSubmit}
-            disabled={isLoading || !message.trim()}
+            onClick={isStreaming ? onStop : handleSubmit}
+            disabled={(!isStreaming && (!message.trim() || isLoading))}
             className="absolute right-4"
           >
-            <svg
-              className={`w-5 h-5 ${
-                isLoading || !message.trim() ? 'text-zinc-600' : 'text-green-500 hover:text-green-400'
-              } cursor-pointer`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M14 5l7 7m0 0l-7 7m7-7H3"
-              />
-            </svg>
+            {isStreaming ? (
+              <svg
+                className="w-5 h-5 text-red-500 hover:text-red-400 cursor-pointer"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <rect x="6" y="6" width="12" height="12" strokeWidth={2} />
+              </svg>
+            ) : (
+              <svg
+                className={`w-5 h-5 ${
+                  !message.trim() || isLoading ? 'text-zinc-600' : 'text-green-500 hover:text-green-400'
+                } cursor-pointer`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M14 5l7 7m0 0l-7 7m7-7H3"
+                />
+              </svg>
+            )}
           </button>
         </div>
       </div>
