@@ -1,118 +1,100 @@
-import { ChangeEvent, ClipboardEvent, FormEvent, useRef, useState } from "react";
-import { AttachmentIcon, SendIcon } from "./icons";
-import { toast } from "sonner";
-import { AnimatePresence } from "framer-motion";
-import { FilePreview } from "./FilePreview";
-import { ChatInputProps } from "../types/chat";
+'use client';
 
-export function ChatInput({ input, handleInputChange, handleSubmit }: ChatInputProps) {
-  const [files, setFiles] = useState<FileList | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+import React, { useState } from 'react';
 
-  const handlePaste = (event: ClipboardEvent<HTMLInputElement>) => {
-    const items = event.clipboardData?.items;
+interface ChatInputProps {
+  onSubmit?: (message: string) => Promise<void>;
+}
 
-    if (items) {
-      const files = Array.from(items)
-        .map((item) => item.getAsFile())
-        .filter((file): file is File => file !== null);
+export function ChatInput({ onSubmit }: ChatInputProps) {
+  const [message, setMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-      if (files.length > 0) {
-        const validFiles = files.filter(
-          (file) =>
-            file.type.startsWith("image/") || file.type.startsWith("text/")
-        );
+  const handleSubmit = async () => {
+    if (!message.trim() || isLoading) return;
+    
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: message }],
+        }),
+      });
 
-        if (validFiles.length === files.length) {
-          const dataTransfer = new DataTransfer();
-          validFiles.forEach((file) => dataTransfer.items.add(file));
-          setFiles(dataTransfer.files);
-        } else {
-          toast.error("Only image and text files are allowed");
-        }
+      if (!response.ok) throw new Error('Failed to send message');
+
+      if (onSubmit) {
+        await onSubmit(message);
       }
+    } catch (error) {
+      console.error('Error sending message:', error);
+    } finally {
+      setIsLoading(false);
+      setMessage('');
     }
   };
 
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = event.target.files;
-    if (selectedFiles) {
-      const validFiles = Array.from(selectedFiles).filter(
-        (file) =>
-          file.type.startsWith("image/") || file.type.startsWith("text/")
-      );
-
-      if (validFiles.length === selectedFiles.length) {
-        const dataTransfer = new DataTransfer();
-        validFiles.forEach((file) => dataTransfer.items.add(file));
-        setFiles(dataTransfer.files);
-      } else {
-        toast.error("Only image and text files are allowed");
-      }
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
     }
-  };
-
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const options = files ? { experimental_attachments: files } : {};
-    handleSubmit(event, options);
-    setFiles(null);
   };
 
   return (
-    <form className="flex flex-col gap-2 relative" onSubmit={onSubmit}>
-      <AnimatePresence>
-        {files && files.length > 0 && <FilePreview files={files} />}
-      </AnimatePresence>
-
-      <input
-        type="file"
-        multiple
-        accept="image/*,text/*"
-        ref={fileInputRef}
-        className="hidden"
-        onChange={handleFileChange}
-      />
-
-      <div className="flex items-center w-full bg-zinc-900 rounded-xl px-4 py-3 shadow-lg border border-zinc-800">
-        <button
-          type="button"
-          onClick={handleUploadClick}
-          className="text-zinc-400 hover:text-green-400 focus:outline-none mr-3 p-2 hover:bg-zinc-800 rounded-lg transition-colors"
-          aria-label="Upload Files"
-        >
-          <span className="w-5 h-5">
-            <AttachmentIcon aria-hidden="true" />
-          </span>
-        </button>
-
-        <input
-          ref={inputRef}
-          className="bg-transparent flex-grow outline-none text-zinc-300 placeholder-zinc-600 text-base"
-          placeholder="Share your n8n workflow or describe what you want to achieve..."
-          value={input}
-          onChange={handleInputChange}
-          onPaste={handlePaste}
-        />
-
-        <button
-          type="submit"
-          disabled={!input && !files}
-          className={`p-2 rounded-lg transition-colors ${
-            input || files
-              ? "text-green-400 hover:bg-zinc-800 ring-1 ring-green-500"
-              : "text-zinc-700"
-          }`}
-          aria-label="Send message"
-        >
-          <SendIcon />
-        </button>
+    <div className="fixed bottom-0 left-0 right-0 bg-black">
+      <div className="max-w-6xl mx-auto p-6">
+        <div className="relative flex items-center">
+          <div className="absolute left-4">
+            <svg
+              className="w-5 h-5 text-blue-500 hover:text-blue-400 cursor-pointer"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3 3m0 0l-3-3m3 3V8"
+              />
+            </svg>
+          </div>
+          <input
+            type="text"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder="Share your n8n workflow or describe what you want to achieve..."
+            className="w-full bg-zinc-900/50 border border-zinc-800 rounded-lg py-4 pl-12 pr-12 text-white placeholder-zinc-500 focus:outline-none focus:border-green-500"
+          />
+          <button
+            onClick={handleSubmit}
+            disabled={isLoading || !message.trim()}
+            className="absolute right-4"
+          >
+            <svg
+              className={`w-5 h-5 ${
+                isLoading || !message.trim() ? 'text-zinc-600' : 'text-green-500 hover:text-green-400'
+              } cursor-pointer`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M14 5l7 7m0 0l-7 7m7-7H3"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
-    </form>
+    </div>
   );
 }
